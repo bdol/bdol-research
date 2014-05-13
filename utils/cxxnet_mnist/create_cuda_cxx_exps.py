@@ -169,66 +169,6 @@ if __name__=="__main__":
 
     f_sge.close()
     f_sge_head.write("qsub -q cuda.q "+os.path.join(expDir, expStr+"_"+expName+".sh")+"\n")
-    
-
-
-
-  ## Create the head script that will submit all the jobs
-  #f_sge_head = open(sge_script_name, 'w')
-  #f_sge_head.write("#!/bin/sh\n\n")
-
-  #for i in range(0, len(layerSizes)):
-    ## Create the directory
-    #expStr = paramsToString(layerSizes[i], activations[i], dropoutSettings[i])
-    #print "Creating {0}...".format(expStr)
-    #expDir = os.path.join(experiments_dir, expStr)
-    #if not os.path.isdir(expDir):
-      #os.mkdir(expDir)
-      ## Also create the logfiles dir
-      #os.mkdir(os.path.join(expDir, "logfiles"))
-      ## And the models dir
-      #os.mkdir(os.path.join(expDir, "savedModels"))
-
-    ## Copy the MLP code
-    #shutil.copy(os.path.join(template_dir, "mlp_dpp_dropout.py"),
-      #os.path.join(expDir, "mlp_dpp_dropout.py"))
-    ## Copy the utils code
-    #shutil.copy(os.path.join(template_dir, "bdolpyutils.py"),
-      #os.path.join(expDir, "bdolpyutils.py"))
-    ## Copy the dpp code
-    #shutil.copy(os.path.join(template_dir, "dpp.py"),
-      #os.path.join(expDir, "dpp.py"))
-    ## Copy the MLP code
-    #shutil.copy(os.path.join(template_dir, "MLP.py"),
-      #os.path.join(expDir, "MLP.py"))
-
-    ## Modify and write the params file
-    #cfgExp.set('model', 'layerSizes', str(layerSizes[i]))
-    #actStr = activations[i]
-    #for j in range(0, len(layerSizes[i])-3):
-      #actStr += ","+activations[i]
-    #actStr += ",softmax"
-    #cfgExp.set('model', 'activations', actStr)
-    #cfgExp.set('program', 'logFileBaseName', os.path.abspath(os.path.join(expDir,
-      #'logfiles/log')))
-    #cfgExp.set('model', 'dropoutType', dropoutSettings[i])
-    #with open(os.path.join(expDir, 'params.ini'), 'wb') as newcfg:
-      #cfgExp.write(newcfg)
-
-    ## Create the SGE wrapper script that will be used by qsub
-    #f_sge_exp = open(os.path.join(expDir, 'sge_run_'+expStr+'.sh'), 'w')
-    #f_sge_exp.write("#!/bin/sh\n")
-    #f_sge_exp.write("#$ -V\n")
-    #f_sge_exp.write("#$ -cwd\n")
-    #f_sge_exp.write("#$ -S /bin/sh\n")
-    #f_sge_exp.write("#$ -m be\n")
-    #f_sge_exp.write("#$ -M bdolmail@gmail.com\n\n")
-    #f_sge_exp.write("python "+os.path.abspath(os.path.join(expDir,
-      #"mlp_dpp_dropout.py"))+" -i "+os.path.abspath(os.path.join(expDir, "params.ini"))+"\n")
-    #f_sge_exp.close()
-
-    ## Add this wrapper script to the head script
-    #f_sge_head.write("qsub -q notcuda.q -e sge_logs/"+expStr+"_"+dateStr+"_e -o sge_logs/"+expStr+"_"+dateStr+"_o  "+os.path.join(expDir, "sge_run_"+expStr+".sh")+"\n")
 
   f_sge_head.close()
   print "Done!"
