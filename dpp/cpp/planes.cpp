@@ -14,7 +14,7 @@ Matrix<double>* gaussian_kernel(Matrix<double>* X) {
     for (int j=0; j<X->h(); j++) {
       double x_j = X->get(j, 0);
       double y_j = X->get(j, 1);
-      double g = (double)exp( - (pow(x_i-x_j, 2) + pow(y_i-y_j, 2))/0.03);
+      double g = (double)exp( - (pow(x_i-x_j, 2) + pow(y_i-y_j, 2))/0.01);
       L->set(i, j, g);
     }
   }
@@ -49,10 +49,8 @@ int main(int argc, char* argv[]) {
   DPP* dpp = new DPP(L);
   std::cout << "DPP created. Sampling..." << std::endl;
 
-  Matrix<double>* Y = dpp->sample();
+  Matrix<double>* Y = dpp->sample(100);
   Y->writeToFile("Y1.txt");
-
-  //culaShutdown();
 
   printf("Done!\n");
   return 0;

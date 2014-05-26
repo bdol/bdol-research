@@ -12,24 +12,62 @@ Matrix<double>* DPP::sample() {
   int k = 0;
 
   // Convert the L eigenvalues to K eigenvalues, and sample eigenvectors
-  std::vector<int> v_idx(this->V_full->w(), 0.0);
+  std::vector<int> v_idx;
   for (int i=0; i<this->d->h(); i++) {
     double d_K = this->d->get(i, 0);
     d_K = d_K/(1+d_K);
     double r = ((double)rand() / RAND_MAX);
     if (r <= d_K) {
+      v_idx.push_back(i);
       k++;
-      v_idx[i] = 1.0;
     }
   }
   
+  return this->sample_dpp(k, v_idx);
+}
+
+Matrix<double>* DPP::sample(int k) {
+  Matrix<double>* E = this->esym_poly(k);
+  std::vector<int> v_idx;
+
+  int remaining = k-1;
+  int i = this->d->h()-1;
+  int j = 0;
+
+  while (remaining >= 0) {
+    double marg = 0.0;
+    if (i==remaining) {
+      marg = 1.0;
+    } else {
+      if (E->get(remaining+1, i+1) == 0) {
+        i--;
+        continue;
+      }
+
+      marg = this->d->get(i, 0) * E->get(remaining, i)/E->get(remaining+1, i+1); 
+    }
+
+    double r = (double)rand() / (double)RAND_MAX;
+    if (r < marg) {
+      v_idx.push_back(i);
+      j++;
+      remaining--;
+    }
+
+    i--;
+  }
+
+  delete E;
+  return this->sample_dpp(k, v_idx);
+}
+
+Matrix<double>* DPP::sample_dpp(int k, std::vector<int> v_idx) {
   Matrix<double>* V = new Matrix<double>(this->V_full->h(), k, false);
   int j = 0;
-  for (int i=0; i<this->V_full->w(); i++) {
-    if (v_idx[i] == 1.0) {
-      this->V_full->copyColumnTo(i, V, j);
-      j++;
-    }
+  Matrix<double>* v_idx_mat = new Matrix<double>(k, 1, false);
+  for (std::vector<int>::iterator it = v_idx.begin(); it != v_idx.end(); ++it) {
+    this->V_full->copyColumnTo(*it, V, j);
+    j++;
   }
 
   Matrix<double>* Y = new Matrix<double>(k, 1, false);
@@ -73,32 +111,22 @@ Matrix<double>* DPP::sample() {
         }
       }
 
-      //V->writeToFile("V_before_col_del.txt");
       Matrix<double>* Vj = new Matrix<double>(V->h(), 1, false);
       V->copyColumnTo(colIdx, Vj, 0);
       V->deleteColumn(colIdx);
-      //Vj->writeToFile("Vj.txt");
-      //V->writeToFile("V_col_del.txt");
 
       Matrix<double>* Vi = new Matrix<double>(1, V->w(), false);
       V->copyRowTo(sampleIdx, Vi, 0);
-      //Vi->writeToFile("Vi_before_scale.txt");
       Vi->elemWiseDivideScalar(Vj->get(sampleIdx, 0));
-      //Vi->writeToFile("Vi_after_scale.txt");
 
-      Matrix<double>* Vshift = Vj->matMul(Vi); // TODO: this is giving weird values in some of the entries...?
-      //Vshift->writeToFile("Vshift.txt");
+      Matrix<double>* Vshift = Vj->matMul(Vi);
       V->elemWiseMinus(Vshift);
-      //V->writeToFile("V_after_minus.txt");
 
-      V->qrInPlace(); // TODO: This is also giving weird values in some of the entries.
-      //V->writeToFile("V_after_qr.txt");
+      V->qrInPlace();
 
       delete Vj;
       delete Vi;
       delete Vshift;
-
-      //exit(EXIT_SUCCESS);
     }
   }
 
@@ -106,6 +134,23 @@ Matrix<double>* DPP::sample() {
   delete V;
 
   return Y;
+}
+
+Matrix<double>* DPP::esym_poly(int k) {
+  int N = this->d->h();
+  Matrix<double>* E = new Matrix<double>(k+1, N+1, false);
+  for (int i=0; i<E->w(); i++) {
+    E->set(0, i, 1.0);
+  }
+
+  for (int i=1; i<k+1; i++) {
+    for (int j=1; j<N+1; j++) {
+      double e = E->get(i, j-1) + this->d->get(j-1, 0)*E->get(i-1, j-1);
+      E->set(i, j, e);
+    }
+  }
+
+  return E;
 }
 
 DPP::~DPP() {
