@@ -1,0 +1,53 @@
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/cxxnet/io
+END
+cxxnet_data.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/cxxnet/io/cxxnet_data.cpp
+END
+cxxnet_iter_spfeat-inl.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/cxxnet/io/cxxnet_iter_spfeat-inl.hpp
+END
+cxxnet_iter_proc-inl.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/cxxnet/io/cxxnet_iter_proc-inl.hpp
+END
+cxxnet_iter_cifar-inl.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/cxxnet/io/cxxnet_iter_cifar-inl.hpp
+END
+cxxnet_iter_thread_imbin-inl.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/cxxnet/io/cxxnet_iter_thread_imbin-inl.hpp
+END
+cxxnet_data.h
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/cxxnet/io/cxxnet_data.h
+END
+cxxnet_iter_mnist-inl.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/cxxnet/io/cxxnet_iter_mnist-inl.hpp
+END
+cxxnet_iter_img-inl.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/cxxnet/io/cxxnet_iter_img-inl.hpp
+END

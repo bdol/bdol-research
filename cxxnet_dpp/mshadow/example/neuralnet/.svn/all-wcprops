@@ -1,0 +1,41 @@
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/neuralnet
+END
+README.md
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/neuralnet/README.md
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/neuralnet/Makefile
+END
+run.sh
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/neuralnet/run.sh
+END
+convnet.cu
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/neuralnet/convnet.cu
+END
+util.h
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/neuralnet/util.h
+END
+nnet.cu
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/neuralnet/nnet.cu
+END

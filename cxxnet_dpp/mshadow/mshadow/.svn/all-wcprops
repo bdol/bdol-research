@@ -1,0 +1,71 @@
+K 25
+svn:wc:ra_dav:version-url
+V 72
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow
+END
+tensor_gpu-inl.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/tensor_gpu-inl.hpp
+END
+tensor_expr.h
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/tensor_expr.h
+END
+tensor_expr_ext.h
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/tensor_expr_ext.h
+END
+tensor.h
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/tensor.h
+END
+tensor_random.h
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/tensor_random.h
+END
+tensor_container.h
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/tensor_container.h
+END
+tensor_expr_engine-inl.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/tensor_expr_engine-inl.hpp
+END
+tensor_cpu-inl.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/tensor_cpu-inl.hpp
+END
+tensor_io.h
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/tensor_io.h
+END
+tensor_base.h
+K 25
+svn:wc:ra_dav:version-url
+V 86
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/tensor_base.h
+END
+tensor_sse-inl.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/tensor_sse-inl.hpp
+END

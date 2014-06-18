@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 72
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/Makefile
+END
+defop.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/defop.cpp
+END
+basic.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/basic.cpp
+END

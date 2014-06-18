@@ -1,0 +1,41 @@
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp
+END
+README.md
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/README.md
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/Makefile
+END
+tags
+K 25
+svn:wc:ra_dav:version-url
+V 61
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/tags
+END
+LICENSE
+K 25
+svn:wc:ra_dav:version-url
+V 64
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/LICENSE
+END
+build.sh
+K 25
+svn:wc:ra_dav:version-url
+V 65
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/build.sh
+END
+matlab_test.m
+K 25
+svn:wc:ra_dav:version-url
+V 70
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/matlab_test.m
+END

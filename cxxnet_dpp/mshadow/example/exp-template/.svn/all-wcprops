@@ -1,0 +1,35 @@
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/exp-template
+END
+exp_template_op.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/exp-template/exp_template_op.cpp
+END
+exp_template.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/exp-template/exp_template.cpp
+END
+README.md
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/exp-template/README.md
+END
+exp_lazy.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/exp-template/exp_lazy.cpp
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/example/exp-template/Makefile
+END

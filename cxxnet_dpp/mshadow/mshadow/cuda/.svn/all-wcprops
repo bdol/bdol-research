@@ -1,0 +1,17 @@
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/cuda
+END
+cuda_reduce.cuh
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/cuda/cuda_reduce.cuh
+END
+tensor_gpu-inl.cuh
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/mshadow/mshadow/cuda/tensor_gpu-inl.cuh
+END

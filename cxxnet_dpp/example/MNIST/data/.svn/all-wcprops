@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/example/MNIST/data
+END
+train-labels-idx1-ubyte.gz
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/example/MNIST/data/train-labels-idx1-ubyte.gz
+END
+t10k-labels-idx1-ubyte.gz
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/example/MNIST/data/t10k-labels-idx1-ubyte.gz
+END
+train-images-idx3-ubyte.gz
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/example/MNIST/data/train-images-idx3-ubyte.gz
+END
+t10k-images-idx3-ubyte.gz
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/svnrepo/!svn/ver/13355/bdol/dpp_dropout/code/cxxnet_dpp/example/MNIST/data/t10k-images-idx3-ubyte.gz
+END
