@@ -1,22 +1,24 @@
 #include "DPP.h"
 
-DPP::DPP(Matrix<double>* L) {
+template<class T>
+DPP<T>::DPP(Matrix<T>* L) {
   // Decompose the kernel and store the eigendecomposition
-  this->V_full = new Matrix<double>(L->h(), L->w(), false);
-  this->d = new Matrix<double>(L->h(), 1, false);
+  this->V_full = new Matrix<T>(L->h(), L->w(), false);
+  this->d = new Matrix<T>(L->h(), 1, false);
 
   L->eig(this->V_full, this->d);
 }
 
-Matrix<double>* DPP::sample() {
+template<class T>
+Matrix<T>* DPP<T>::sample() {
   int k = 0;
 
   // Convert the L eigenvalues to K eigenvalues, and sample eigenvectors
   std::vector<int> v_idx;
   for (int i=0; i<this->d->h(); i++) {
-    double d_K = this->d->get(i, 0);
+    T d_K = this->d->get(i, 0);
     d_K = d_K/(1+d_K);
-    double r = ((double)rand() / RAND_MAX);
+    T r = (T)((double)rand() / RAND_MAX);
     if (r <= d_K) {
       v_idx.push_back(i);
       k++;
@@ -26,8 +28,9 @@ Matrix<double>* DPP::sample() {
   return this->sample_dpp(k, v_idx);
 }
 
-Matrix<double>* DPP::sample(int k) {
-  Matrix<double>* E = this->esym_poly(k);
+template<class T>
+Matrix<T>* DPP<T>::sample(int k) {
+  Matrix<T>* E = this->esym_poly(k);
   std::vector<int> v_idx;
 
   int remaining = k-1;
@@ -61,17 +64,18 @@ Matrix<double>* DPP::sample(int k) {
   return this->sample_dpp(k, v_idx);
 }
 
-Matrix<double>* DPP::sample_dpp(int k, std::vector<int> v_idx) {
-  Matrix<double>* V = new Matrix<double>(this->V_full->h(), k, false);
+template<class T>
+Matrix<T>* DPP<T>::sample_dpp(int k, std::vector<int> v_idx) {
+  Matrix<T>* V = new Matrix<T>(this->V_full->h(), k, false);
   int j = 0;
-  Matrix<double>* v_idx_mat = new Matrix<double>(k, 1, false);
+  Matrix<T>* v_idx_mat = new Matrix<T>(k, 1, false);
   for (std::vector<int>::iterator it = v_idx.begin(); it != v_idx.end(); ++it) {
     this->V_full->copyColumnTo(*it, V, j);
     j++;
   }
 
-  Matrix<double>* Y = new Matrix<double>(k, 1, false);
-  Matrix<double>* Pr = new Matrix<double>(V->h(), 1, false);
+  Matrix<T>* Y = new Matrix<T>(k, 1, false);
+  Matrix<T>* Pr = new Matrix<T>(V->h(), 1, false);
   for (int i=k-1; i>=0; i--) {
 
     // Form distribution over items
@@ -111,15 +115,15 @@ Matrix<double>* DPP::sample_dpp(int k, std::vector<int> v_idx) {
         }
       }
 
-      Matrix<double>* Vj = new Matrix<double>(V->h(), 1, false);
+      Matrix<T>* Vj = new Matrix<T>(V->h(), 1, false);
       V->copyColumnTo(colIdx, Vj, 0);
       V->deleteColumn(colIdx);
 
-      Matrix<double>* Vi = new Matrix<double>(1, V->w(), false);
+      Matrix<T>* Vi = new Matrix<T>(1, V->w(), false);
       V->copyRowTo(sampleIdx, Vi, 0);
       Vi->elemWiseDivideScalar(Vj->get(sampleIdx, 0));
 
-      Matrix<double>* Vshift = Vj->matMul(Vi);
+      Matrix<T>* Vshift = Vj->matMul(Vi);
       V->elemWiseMinus(Vshift);
 
       V->qrInPlace();
@@ -136,9 +140,10 @@ Matrix<double>* DPP::sample_dpp(int k, std::vector<int> v_idx) {
   return Y;
 }
 
-Matrix<double>* DPP::esym_poly(int k) {
+template<class T>
+Matrix<T>* DPP<T>::esym_poly(int k) {
   int N = this->d->h();
-  Matrix<double>* E = new Matrix<double>(k+1, N+1, false);
+  Matrix<T>* E = new Matrix<T>(k+1, N+1, false);
   for (int i=0; i<E->w(); i++) {
     E->set(0, i, 1.0);
   }
@@ -153,7 +158,12 @@ Matrix<double>* DPP::esym_poly(int k) {
   return E;
 }
 
-DPP::~DPP() {
+template<class T>
+DPP<T>::~DPP() {
   delete V_full;
   delete d;
 }
+
+template class DPP<float>;
+template class DPP<double>;
+

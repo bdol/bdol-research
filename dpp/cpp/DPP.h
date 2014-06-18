@@ -4,22 +4,21 @@
 #include "Matrix.h"
 #include <vector>
 
+template<class T>
 class DPP {
   public:
-    DPP(Matrix<double>* L);
-    Matrix<double>* sample();
-    Matrix<double>* sample(int k);
+    DPP(Matrix<T>* L);
+    Matrix<T>* sample();
+    Matrix<T>* sample(int k);
 
     ~DPP();
 
   private:
-    Matrix<double>* sample_dpp(int k, std::vector<int> v_idx);
-    Matrix<double>* esym_poly(int k);
+    Matrix<T>* sample_dpp(int k, std::vector<int> v_idx);
+    Matrix<T>* esym_poly(int k);
 
-    Matrix<double>* V_full;
-    Matrix<double>* d;
-
-
+    Matrix<T>* V_full;
+    Matrix<T>* d;
 };
 
 #endif

@@ -4,17 +4,19 @@
 #include <stdlib.h>
 #include <math.h>
 
-Matrix<double>* gaussian_kernel(Matrix<double>* X) {
-  Matrix<double> *L = new Matrix<double>(X->h(), X->h(), false);
+#define real_t float
+
+Matrix<real_t>* gaussian_kernel(Matrix<real_t>* X) {
+  Matrix<real_t> *L = new Matrix<real_t>(X->h(), X->h(), false);
 
   for (int i=0; i<X->h(); i++) {
-    double x_i = X->get(i, 0);
-    double y_i = X->get(i, 1);
+    real_t x_i = X->get(i, 0);
+    real_t y_i = X->get(i, 1);
 
     for (int j=0; j<X->h(); j++) {
-      double x_j = X->get(j, 0);
-      double y_j = X->get(j, 1);
-      double g = (double)exp( - (pow(x_i-x_j, 2) + pow(y_i-y_j, 2))/0.01);
+      real_t x_j = X->get(j, 0);
+      real_t y_j = X->get(j, 1);
+      real_t g = (real_t)exp( - (pow(x_i-x_j, 2) + pow(y_i-y_j, 2))/0.01);
       L->set(i, j, g);
     }
   }
@@ -34,22 +36,22 @@ int main(int argc, char* argv[]) {
   int N = atoi(argv[1]);
 
   // Generate the points
-  Matrix<double> *X = new Matrix<double>(N*N, 2, false);
+  Matrix<real_t> *X = new Matrix<real_t>(N*N, 2, false);
   int c = 0;
   for (int x=1; x<=N; x++) {
     for (int y=1; y<=N; y++) {
-      X->set(c, 0, (double)x/(double)N);
-      X->set(c, 1, (double)y/(double)N);
+      X->set(c, 0, (real_t)x/(real_t)N);
+      X->set(c, 1, (real_t)y/(real_t)N);
       c++;
     }
   }
-  Matrix<double> *L = gaussian_kernel(X);
+  Matrix<real_t> *L = gaussian_kernel(X);
   
   std::cout << "Forming DPP with eigendecomposition..." << std::endl;
-  DPP* dpp = new DPP(L);
+  DPP<real_t>* dpp = new DPP<real_t>(L);
   std::cout << "DPP created. Sampling..." << std::endl;
 
-  Matrix<double>* Y = dpp->sample(100);
+  Matrix<real_t>* Y = dpp->sample(100);
   Y->writeToFile("Y1.txt");
 
   printf("Done!\n");

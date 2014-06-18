@@ -249,8 +249,30 @@ Matrix<T>* Matrix<T>::matMul(Matrix<T>* B) {
 }
 template<>
 Matrix<float>* Matrix<float>::matMul(Matrix<float>* B) {
-  std::cout << "Error in Matrix::matMul(): matMul() for floats is not implemented yet" << std::endl;
-  exit(EXIT_FAILURE);
+  if ( this->rowMajor || B->rowMajor) {
+    std::cout << "Error in matMul: One of the matrices is not column-major (row major not supported yet)." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+
+  int m = this->height;
+  int n = B->w();
+  int k = this->width;
+
+  Matrix<float>* C = new Matrix<float>(m, n, false);
+
+  if ( k != B->h() ) {
+    std::cout << "Error in matMul: Inner matrix dimensions are not equal." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans,
+      m, n, k, 1.0, 
+      this->elements, m,
+      B->elements, k,
+      0.0, C->elements, m);
+
+  return C;
 }
 
 template<>
@@ -357,8 +379,21 @@ void Matrix<T>::eig(Matrix<T>* V, Matrix<T>* d) {
 // function
 template<>
 void Matrix<float>::eig(Matrix<float>* V, Matrix<float>* d) {
-  std::cout << "Error in Matrix::eig: eig() for floats is not implemented yet" << std::endl;
-  exit(EXIT_FAILURE);
+  if (this->rowMajor) {
+    std::cout << "Error in Matrix::eig: eig() is only implemented for column major matrices." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  this->copyTo(V);
+  MKL_INT info;
+  info = LAPACKE_ssyev( LAPACK_COL_MAJOR,
+                        'V', 'U',
+                        this->height, V->getElements(),
+                        this->height, d->getElements() );
+  if (info != 0) {
+    std::cout << "Error, eig returned error code " << info << std::endl;
+    exit(EXIT_FAILURE);
+  }
 }
 
 template<>
@@ -403,8 +438,24 @@ void Matrix<T>::qrInPlace() {
 
 template<>
 void Matrix<float>::qrInPlace() {
-  std::cout << "Error in Matrix::qrInPlace(): qrInPlace() for floats is not implemented yet" << std::endl;
-  exit(EXIT_FAILURE);
+  float* tau = new float[std::min(this->h(), this->w())];
+  MKL_INT info;
+  info = LAPACKE_sgeqrf(CblasColMajor, 
+    this->h(), this->w(), this->getElements(), 
+    this->h(), tau);
+  if (info != 0) {
+    std::cout << "Error, dgeqrf in qrInPlace() returned error code " << info << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  info = LAPACKE_sorgqr(CblasColMajor,
+      this->h(), this->w(), this->w(), this->getElements(), this->h(), tau);
+  if (info != 0) {
+    std::cout << "Error, dorgqr in qrInPlace() returned error code " << info << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  delete [] tau;
 }
 
 template<>
