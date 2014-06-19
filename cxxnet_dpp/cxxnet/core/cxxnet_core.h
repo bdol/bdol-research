@@ -290,6 +290,7 @@ namespace cxxnet {
         const int kPadding = 14;
         const int kLRN   = 15;
         const int kDppDropout = 16;
+        const int kDppDropin = 17;
         const int kCaffe = 100;
     };
     /*! \brief namespace for type of random init method */

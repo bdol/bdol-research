@@ -656,26 +656,138 @@ namespace cxxnet {
         mshadow::TensorContainer<xpu, 2> mask_, tmpw_;
     }; // class DropconnLayer
 
+    /**
+     * DPP Dropout. Brian Dolhansky 06/2014
+     *  Because we need information about the weights, we overload the
+     *  FullConnectLayer class instead of the DropoutLayer class. To use DPP
+     *  dropout, replace a connection between two layers with:
+     *    layer[i->j] = dpp_dropout:label
+     *      threshold = p
+     *      nhidden = n
+     *      init_sigma = 0.01 (example)
+     *
+     *  This class samples k=p*n points from a k-DPP, and then drops those units
+     *  out. Thus, we are sampling a diverse set and removing it for the current
+     *  epoch. Currently I'm using a hard-coded kernel L = (W*W^T).^2. In the
+     *  future I will add the ability to change kernels programatically in the
+     *  configuration file.
+     */
     template<typename xpu>
     class DppDropoutLayer : public FullConnectLayer<xpu> {
     public:
         DppDropoutLayer(mshadow::Random<xpu> &rnd, Node<xpu> &in, Node<xpu> &out)
             : Parent(rnd, in, out) {}
         virtual void Forward(bool is_train) {
+            // If we're training, we need to do dropout
+            if( is_train ){
+                
+                // Form the L-ensemble L = (W*W^T).^2
+                L_ = dot(this->wmat_.T(), this->wmat_);
+                Lsq_ =  L_ * L_;
+
+                // Copy the mshadow matrix into my custom Matrix container.
+                // TODO: I should probably change the DPP class to accept
+                // mshadow data containers.
+                Matrix<real_t>* Lm = new Matrix<real_t>(Lsq_.dptr, Lsq_.shape[1], Lsq_.shape[0], false);
+                DPP<real_t>* dpp = new DPP<real_t>(Lm);
+
+                // Calculate the k for a k-DPP
+                real_t pkeep = 1.0f - Parent::param_.dropout_threshold;
+                int k = (int)(pkeep*Lm->h());
+
+                // Sample the DPP and store the samples
+                Matrix<real_t>* Y = dpp->sample(k);
+
+                // For all DPP samples, we set drop_idx to true
+                std::vector<bool> drop_idx(Lm->h(), false);
+                for (int i=0; i<k; i++) {
+                  drop_idx[(int)Y->get(i, 0)] = true;
+                }
+
+                // For a unit that we've dropped, set ALL weights in the
+                // corresponding row (weights going to the next layer) to 0
+                for (unsigned int j=0; j<mask_.shape[0]; j++) {
+                  if (drop_idx[j]) {
+                    for (unsigned int i=0; i<mask_.shape[1]; i++) {
+                      mask_[i][j] = 0.0;
+                    }
+                  // Otherwise, we scale the weight up to account for the fact
+                  // that we're only keeping pkeep*n units. We could just as
+                  // easily scale during testing.
+                  } else {
+                    for (unsigned int i=0; i<mask_.shape[1]; i++) {
+                      mask_[i][j] = 1.0/pkeep;
+                    }
+                  }
+                }
+
+                // Multiply the temporary weight matrix (used in forward
+                // propagation) by the scaled dropout mask
+                tmpw_ = this->wmat_*mask_;
+
+                delete Lm;
+                delete dpp;
+                delete Y;
+            }else{
+                mshadow::Copy( tmpw_, this->wmat_ );
+            }
+            Parent::Forward( tmpw_ );
+        }
+
+        // For backpropagation, make sure we also do dropout
+        virtual void Backprop(bool prop_grad) {
+            Parent::Backprop( prop_grad, tmpw_ );
+            Parent::gwmat_ *= mask_;
+        }
+
+        virtual void InitLayer( void ){
+            Parent::InitLayer();
+            this->mask_.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+            this->tmpw_.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+            // This matrix will hold the DPP L-ensemble
+            this->L_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            this->Lsq_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+        }
+    private:
+        typedef FullConnectLayer<xpu> Parent;
+    private:
+        mshadow::TensorContainer<xpu, 2> mask_, tmpw_, L_, Lsq_;
+    }; // class DppDropoutLayer
+
+    /**
+     * DPP Dropin. Brian Dolhansky 06/2014
+     *  Because we need information about the weights, we overload the
+     *  FullConnectLayer class instead of the DropoutLayer class. To use DPP
+     *  dropout, replace a connection between two layers with:
+     *    layer[i->j] = dpp_dropin:label
+     *      threshold = p
+     *      nhidden = n
+     *      init_sigma = 0.01 (example)
+     *
+     *  This class samples k=p*n points from a k-DPP, and then drops the OTHER
+     *  units . Thus, we are sampling a diverse set and removing all others for
+     *  the current epoch. Currently I'm using a hard-coded kernel L =
+     *  (W*W^T).^2.  In the future I will add the ability to change kernels
+     *  programatically in the configuration file.
+     */
+    template<typename xpu>
+    class DppDropinLayer : public FullConnectLayer<xpu> {
+    public:
+        DppDropinLayer(mshadow::Random<xpu> &rnd, Node<xpu> &in, Node<xpu> &out)
+            : Parent(rnd, in, out) {}
+        virtual void Forward(bool is_train) {
             if( is_train ){
                 L_ = dot(this->wmat_.T(), this->wmat_);
                 Lsq_ =  L_ * L_;
 
-                //mshadow::Copy(LsqCPU, Lsq_);
-
                 Matrix<real_t>* Lm = new Matrix<real_t>(Lsq_.dptr, Lsq_.shape[1], Lsq_.shape[0], false);
-                //Matrix<real_t>* Lm = new Matrix<real_t>(LsqCPU.dptr, LsqCPU.shape[1], LsqCPU.shape[0], false);
-                //
                 DPP<real_t>* dpp = new DPP<real_t>(Lm);
                 real_t pkeep = 1.0f - Parent::param_.dropout_threshold;
                 int k = (int)(pkeep*Lm->h());
                 Matrix<real_t>* Y = dpp->sample(k);
 
+                // This is the only change from DPP Dropout: for all DPP
+                // samples, set drop_idx to FALSE
                 std::vector<bool> drop_idx(Lm->h(), true);
                 for (int i=0; i<k; i++) {
                   drop_idx[(int)Y->get(i, 0)] = false;
@@ -714,14 +826,12 @@ namespace cxxnet {
             // This matrix will hold the DPP L-ensemble
             this->L_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
             this->Lsq_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
-            //this->LsqCPU.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
         }
     private:
         typedef FullConnectLayer<xpu> Parent;
     private:
         mshadow::TensorContainer<xpu, 2> mask_, tmpw_, L_, Lsq_;
-        //mshadow::TensorContainer<cpu, 2> LsqCPU;
-    }; // class DppDropoutLayer
+    }; // class DppDropinLayer
     
 
     template<typename xpu>
@@ -824,6 +934,7 @@ namespace cxxnet{
         if( !strcmp( type, "dropout") ) return kDropout;
         if( !strcmp( type, "dropconn") ) return kDropConn;
         if( !strcmp( type, "dpp_dropout") ) return kDppDropout;
+        if( !strcmp( type, "dpp_dropin") ) return kDppDropin;
         if( !strcmp( type, "conv") )     return kConv;
         if( !strcmp( type, "max_pooling")) return kMaxPooling;
         if( !strcmp( type, "sum_pooling")) return kSumPooling;
@@ -853,6 +964,7 @@ namespace cxxnet{
         case kDropConn: return new DropConnLayer<xpu>(rnd, in, out);
         case kDropout: return new DropoutLayer<xpu>(rnd, in, out);
         case kDppDropout: return new DppDropoutLayer<xpu>(rnd, in, out);
+        case kDppDropin: return new DppDropinLayer<xpu>(rnd, in, out);
         case kConv:    return new ConvolutionLayer<xpu>( rnd, in, out );
         case kMaxPooling: return new PoolingLayer<mshadow::red::maximum, false, xpu>(in, out);
         case kSumPooling: return new PoolingLayer<mshadow::red::sum, false, xpu>(in, out);
