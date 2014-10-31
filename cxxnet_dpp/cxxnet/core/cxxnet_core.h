@@ -291,6 +291,15 @@ namespace cxxnet {
         const int kLRN   = 15;
         const int kDppDropout = 16;
         const int kDppDropin = 17;
+        const int kStrata = 18;
+        const int kSimBasedDropout = 19;
+        const int kSimBasedDropin = 20;
+        const int kMyDropout = 21;
+        const int kMyDropoutPerMbatch = 22;
+        const int kDppDropoutOnlyQuality = 23;
+        const int kDppDropinOnlyQuality = 24;
+        const int kDppDropoutOnlySimilarity = 25;
+        const int kDppDropinOnlySimilarity = 26;
         const int kCaffe = 100;
     };
     /*! \brief namespace for type of random init method */

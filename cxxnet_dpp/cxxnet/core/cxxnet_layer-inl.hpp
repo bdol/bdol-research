@@ -16,9 +16,19 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <iostream>
+
+// DPP-specific includes
 #include <DPP.h>
 #include <Matrix.h>
 #include <fstream>
+
+// strata-specific includes
+#include <vector>
+#include <kmeans.h>
+#include <fstream>
+
+// simbased-specific includes
+#include <math.h>
 
 #if CXXNET_ADAPT_CAFFE
 #include "../plugin/cxxnet_caffe_adapter-inl.hpp"
@@ -201,6 +211,7 @@ namespace cxxnet {
             if( param_.no_bias == 0 ){
                 out_.mat() += repmat( bias_, nbatch );
             }
+
         }
         inline void Backprop(bool prop_grad, mshadow::Tensor<xpu,2> wmat){
             // accumulate gradient
@@ -214,6 +225,7 @@ namespace cxxnet {
             }
         }
     protected:
+
         /*! \brief parameters that potentially be useful */
         LayerParam param_;
         /*! \brief input node */
@@ -754,6 +766,185 @@ namespace cxxnet {
         mshadow::TensorContainer<xpu, 2> mask_, tmpw_, L_, Lsq_;
     }; // class DppDropoutLayer
 
+    template<typename xpu>
+    class DppDropoutOnlySimilarityLayer : public FullConnectLayer<xpu> {
+    public:
+        DppDropoutOnlySimilarityLayer(mshadow::Random<xpu> &rnd, Node<xpu> &in, Node<xpu> &out)
+            : Parent(rnd, in, out) {}
+        virtual void Forward(bool is_train) {
+            // If we're training, we need to do dropout
+            if( is_train ){
+                
+                w_normed = this->wmat_+0.0;
+                for (unsigned int j=0; j<this->wmat_.shape[0]; j++) {
+                  real_t w_normalizer = 0.0;
+                  for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                    w_normalizer += this->wmat_[i][j]*this->wmat_[i][j];
+                  }
+
+                  w_normalizer = sqrt(w_normalizer);
+                  
+                  for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                    w_normed[i][j] = w_normed[i][j]/w_normalizer;
+                  }
+                }
+
+                // Form the L-ensemble L = (W*W^T).^2
+                L_ = dot(w_normed.T(), w_normed);
+                Lsq_ =  L_ * L_;
+
+                // Copy the mshadow matrix into my custom Matrix container.
+                // TODO: I should probably change the DPP class to accept
+                // mshadow data containers.
+                Matrix<real_t>* Lm = new Matrix<real_t>(Lsq_.dptr, Lsq_.shape[1], Lsq_.shape[0], false);
+                DPP<real_t>* dpp = new DPP<real_t>(Lm);
+
+                // Calculate the k for a k-DPP
+                real_t pkeep = 1.0f - Parent::param_.dropout_threshold;
+                int k = (int)(pkeep*Lm->h());
+
+                // Sample the DPP and store the samples
+                Matrix<real_t>* Y = dpp->sample(k);
+
+                // For all DPP samples, we set drop_idx to true
+                std::vector<bool> drop_idx(Lm->h(), false);
+                for (int i=0; i<k; i++) {
+                  drop_idx[(int)Y->get(i, 0)] = true;
+                }
+
+                // For a unit that we've dropped, set ALL weights in the
+                // corresponding row (weights going to the next layer) to 0
+                for (unsigned int j=0; j<mask_.shape[0]; j++) {
+                  if (drop_idx[j]) {
+                    for (unsigned int i=0; i<mask_.shape[1]; i++) {
+                      mask_[i][j] = 0.0;
+                    }
+                  // Otherwise, we scale the weight up to account for the fact
+                  // that we're only keeping pkeep*n units. We could just as
+                  // easily scale during testing.
+                  } else {
+                    for (unsigned int i=0; i<mask_.shape[1]; i++) {
+                      mask_[i][j] = 1.0/pkeep;
+                    }
+                  }
+                }
+
+                // Multiply the temporary weight matrix (used in forward
+                // propagation) by the scaled dropout mask
+                tmpw_ = this->wmat_*mask_;
+
+                delete Lm;
+                delete dpp;
+                delete Y;
+            }else{
+                mshadow::Copy( tmpw_, this->wmat_ );
+            }
+            Parent::Forward( tmpw_ );
+        }
+
+        // For backpropagation, make sure we also do dropout
+        virtual void Backprop(bool prop_grad) {
+            Parent::Backprop( prop_grad, tmpw_ );
+            Parent::gwmat_ *= mask_;
+        }
+
+        virtual void InitLayer( void ){
+            Parent::InitLayer();
+            this->mask_.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+            this->tmpw_.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+            // This matrix will hold the DPP L-ensemble
+            this->L_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            this->Lsq_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            this->w_normed.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+        }
+    private:
+        typedef FullConnectLayer<xpu> Parent;
+    private:
+        mshadow::TensorContainer<xpu, 2> mask_, tmpw_, L_, Lsq_;
+        mshadow::TensorContainer<xpu, 2> w_normed;
+    }; // class DppDropoutOnlySimilarityLayer
+
+    template<typename xpu>
+    class DppDropoutOnlyQualityLayer : public FullConnectLayer<xpu> {
+    public:
+        DppDropoutOnlyQualityLayer(mshadow::Random<xpu> &rnd, Node<xpu> &in, Node<xpu> &out)
+            : Parent(rnd, in, out) {}
+
+        virtual void Forward(bool is_train) {
+            if( is_train ){
+                const real_t pkeep = 1.0f - Parent::param_.dropout_threshold;
+
+                mask_ = F<op::threshold>( Parent::rnd_.uniform( mask_.shape ), pkeep ) * (1.0f/pkeep);
+                int N = mask_.shape[0];
+
+                // Sample k from a binomial distribution
+                // Not fancy but works for now
+                int k=0;
+                for (int i=0; i<N; i++) {
+                  float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+                  if (r > pkeep) {
+                    k++;
+                  }
+                }
+
+                int count = 0;
+                std::vector<bool> keep_idx(N, false);
+                // Select an item with probability
+                //  (w^Tw)^2 / [ (w^Tw)^2 + 1 ]
+                for (unsigned int j=0; j<this->wmat_.shape[0]; j++) {
+                  real_t w_norm = 0.0;
+                  for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                    w_norm += this->wmat_[i][j]*this->wmat_[i][j];
+                  }
+                  real_t p = w_norm*w_norm / (w_norm*w_norm + 1);
+                  float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+                  if (r > p) {
+                    keep_idx[j] = true;
+                    count++;
+                  }
+                }
+
+                if (count < k) {
+                  for (int i=count; i<k; i++) {
+                    int j = rand() % N;
+                    while (keep_idx[j]) {
+                      j = rand() % N;
+                    }
+                    keep_idx[j] = true;
+                  }
+                }
+
+                for (unsigned int i=0; i<mask_.shape[0]; i++) {
+                  for (unsigned int j=0; j<mask_.shape[1]; j++) {
+                    if (keep_idx[i]) {
+                      mask_[0][0][j][i]  = 1.0f/pkeep;
+                    } else {
+                      mask_[0][0][j][i]  = 0.0;
+                    }
+                  }
+                }
+
+                this->in_.data = this->in_.data * mask_;
+            }
+
+            Parent::Forward( this->wmat_ );
+        }
+        virtual void Backprop(bool prop_grad) {
+            Parent::Backprop( prop_grad, this->wmat_ );
+            if (prop_grad) {
+                this->in_.data *= mask_;
+            }
+        }
+        virtual void InitLayer( void ){
+            Parent::InitLayer();
+            mask_.Resize( this->in_.data.shape );
+        }
+    private:
+        typedef FullConnectLayer<xpu> Parent;
+    private:
+        mshadow::TensorContainer<xpu, 4> mask_;
+    }; // class DppDropoutOnlyQualityLayer
+
     /**
      * DPP Dropin. Brian Dolhansky 06/2014
      *  Because we need information about the weights, we overload the
@@ -832,7 +1023,957 @@ namespace cxxnet {
     private:
         mshadow::TensorContainer<xpu, 2> mask_, tmpw_, L_, Lsq_;
     }; // class DppDropinLayer
+
+    template<typename xpu>
+    class DppDropinOnlySimilarityLayer : public FullConnectLayer<xpu> {
+    public:
+        DppDropinOnlySimilarityLayer(mshadow::Random<xpu> &rnd, Node<xpu> &in, Node<xpu> &out)
+            : Parent(rnd, in, out) {}
+        virtual void Forward(bool is_train) {
+            if( is_train ){
+                w_normed = this->wmat_+0.0;
+                for (unsigned int j=0; j<this->wmat_.shape[0]; j++) {
+                  real_t w_normalizer = 0.0;
+                  for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                    w_normalizer += this->wmat_[i][j]*this->wmat_[i][j];
+                  }
+
+                  w_normalizer = sqrt(w_normalizer);
+                  
+                  for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                    w_normed[i][j] = w_normed[i][j]/w_normalizer;
+                  }
+                }
+
+                // Form the L-ensemble L = (W*W^T).^2
+                L_ = dot(w_normed.T(), w_normed);
+                Lsq_ =  L_ * L_;
+
+                Matrix<real_t>* Lm = new Matrix<real_t>(Lsq_.dptr, Lsq_.shape[1], Lsq_.shape[0], false);
+                DPP<real_t>* dpp = new DPP<real_t>(Lm);
+                real_t pkeep = 1.0f - Parent::param_.dropout_threshold;
+                int k = (int)(pkeep*Lm->h());
+                Matrix<real_t>* Y = dpp->sample(k);
+
+                // This is the only change from DPP Dropout: for all DPP
+                // samples, set drop_idx to FALSE
+                std::vector<bool> drop_idx(Lm->h(), true);
+                for (int i=0; i<k; i++) {
+                  drop_idx[(int)Y->get(i, 0)] = false;
+                }
+
+                for (unsigned int j=0; j<mask_.shape[0]; j++) {
+                  if (drop_idx[j]) {
+                    for (unsigned int i=0; i<mask_.shape[1]; i++) {
+                      mask_[i][j] = 0.0f;
+                    }
+                  } else {
+                    for (unsigned int i=0; i<mask_.shape[1]; i++) {
+                      mask_[i][j] = 1.0f/pkeep;
+                    }
+                  }
+                }
+
+                tmpw_ = this->wmat_*mask_;
+
+                delete Lm;
+                delete dpp;
+                delete Y;
+            }else{
+                mshadow::Copy( tmpw_, this->wmat_ );
+            }
+            Parent::Forward( tmpw_ );
+        }
+        virtual void Backprop(bool prop_grad) {
+            Parent::Backprop( prop_grad, tmpw_ );
+            Parent::gwmat_ *= mask_;
+        }
+        virtual void InitLayer( void ){
+            Parent::InitLayer();
+            this->mask_.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+            this->tmpw_.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+            // This matrix will hold the DPP L-ensemble
+            this->L_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            this->Lsq_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            this->w_normed.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+        }
+    private:
+        typedef FullConnectLayer<xpu> Parent;
+    private:
+        mshadow::TensorContainer<xpu, 2> mask_, tmpw_, L_, Lsq_;
+        mshadow::TensorContainer<xpu, 2> w_normed;
+    }; // class DppDropinOnlySimilarityLayer
+
+    /**
+     * Stratified Sampling. Brian Dolhansky 2014.
+     * Use stratified sampling to select units to dropin.
+     */
+    template<typename xpu>
+    class StratifiedSamplingLayer : public FullConnectLayer<xpu> {
+    public:
+        StratifiedSamplingLayer(mshadow::Random<xpu> &rnd, Node<xpu> &in, Node<xpu> &out)
+            : Parent(rnd, in, out) {}
+        virtual void Forward(bool is_train) {
+            if( is_train ){
+              // Number of rows = dimensionality of input
+              // Number cols = dimensionality of output
+              // n = # ROWS
+              int n = this->wmat_.shape[1];
+              // m = # COLS
+              int m = this->wmat_.shape[0];
+
+              // DEBUG: write the weight matrix
+              //std::ofstream f;
+              //f.open("wtest");
+              //for (int i=0; i<m; i++) {
+                //for (int j=0; j<n; j++) {
+                  //f << this->wmat_[i][j] << " ";
+                //}
+                //f << std::endl;
+              //}
+              //f.close();
+
+
+              // Each column of the weight matrix is a data point
+              // There are m columns (m objects) and n rows (n features)
+              float** objects = (float**)malloc(m * sizeof(float*));
+              objects[0] = (float*) malloc(n*m * sizeof(float));
+              for (int i=1; i<m; i++) {
+                objects[i] = objects[i-1] + 2;
+              }
+
+              // TODO: check to make sure this is right
+              for (int i=0; i<m; i++) {
+                for (int j=0; j<n; j++) {
+                  objects[i][j] = this->wmat_[i][j];
+                }
+              }
+
+
+              float** clusters;
+              float threshold = 1E-8;
+              int loopIterations;
+              int* membership = (int*) malloc(m * sizeof(int));
+              int k = 10;
+              clusters = seq_kmeans(objects, n, m, k, threshold,
+                                      membership, &loopIterations);
+
+              free(objects[0]);
+              free(objects);
+
+              // TODO: parameterize this
+              int numPerCluster = 5;
+
+              std::vector<int> kmeansSamples;
+              for (int i=0; i<k; i++) {
+                std::vector<int> clusterIdx;
+                int nCluster = 0;
+                for (int j=0; j<m; j++) {
+                  if (membership[j] == i) {
+                    clusterIdx.push_back(j);
+                    nCluster++;
+                  }
+                }
+
+                if (clusterIdx.size() <= numPerCluster) {
+                  for (unsigned int j=0; j<clusterIdx.size(); j++) {
+                    kmeansSamples.push_back( clusterIdx[j] );
+                  }
+                } else {
+                  std::vector<int> sampleIdx = this->sampleWithoutReplacement(nCluster, numPerCluster);
+                  for (int j=0; j<numPerCluster; j++) {
+                    kmeansSamples.push_back( clusterIdx[sampleIdx[j]] );
+
+                  }
+                }
+
+              }
+              free(membership);
+              free(clusters);
+
+              std::vector<bool> drop_idx(m, true);
+              //for (int i=0; i<m; i++) {
+                //double r = (double) rand() / (RAND_MAX);
+                //if (r <= 0.5) {
+                  //drop_idx[i] = false;
+                //}
+              //}
+                
+              for (unsigned int i=0; i<kmeansSamples.size(); i++) {
+                drop_idx[kmeansSamples[i]] = false;
+                whist[kmeansSamples[i]] = whist[kmeansSamples[i]]+1;
+              }
+
+              if (this->wmat_.shape[0] == 102) {
+                std::ofstream f102;
+                f102.open("kmeans102");
+                for (int i=0; i<102; i++) {
+                  f102 << whist[i] << std::endl;
+                }
+                f102.close();
+              } else if (this->wmat_.shape[0] == 101) {
+                std::ofstream f101;
+                f101.open("kmeans101");
+                for (int i=0; i<101; i++) {
+                  f101 << whist[i] << std::endl;
+                }
+                f101.close();
+              } else if (this->wmat_.shape[0] == 100) {
+                std::ofstream f100;
+                f100.open("kmeans100");
+                for (int i=0; i<100; i++) {
+                  f100 << whist[i] << std::endl;
+                }
+                f100.close();
+              }
+
+              real_t pkeep = 1.0f - Parent::param_.dropout_threshold;
+              for (unsigned int j=0; j<mask_.shape[0]; j++) {
+                if (drop_idx[j]) {
+                  for (unsigned int i=0; i<mask_.shape[1]; i++) {
+                    mask_[i][j] = 0.0f;
+                  }
+                } else {
+                  for (unsigned int i=0; i<mask_.shape[1]; i++) {
+                    mask_[i][j] = 1.0f/pkeep;
+                  }
+                }
+              }
+
+              tmpw_ = this->wmat_*mask_;
+            }else{
+                mshadow::Copy( tmpw_, this->wmat_ );
+            }
+            Parent::Forward( tmpw_ );
+        }
+        virtual void Backprop(bool prop_grad) {
+            Parent::Backprop( prop_grad, tmpw_ );
+            Parent::gwmat_ *= mask_;
+        }
+        virtual void InitLayer( void ){
+            Parent::InitLayer();
+            this->mask_.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+            this->tmpw_.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+
+            for (unsigned int i=0; i<this->in_.data.shape[0]; i++) {
+              whist.push_back(0);
+            }
+
+        }
+    private:
+        typedef FullConnectLayer<xpu> Parent;
+
+        std::vector<int> sampleWithoutReplacement(int n, int num_samples) {
+          std::vector<int> a(n, 0);
+          for (int i=0; i<n; i++) {
+            a[i] = i;
+          }
+
+          int mx = n-1;
+          while (mx > 0) {
+            int r = (int)( (double)mx*((double) rand() / (RAND_MAX)) );
+            int tmp = a[mx];
+            a[mx] = a[r];
+            a[r] = tmp;
+            mx--;
+          }
+
+          return a;
+        }
+        
+    private:
+        mshadow::TensorContainer<xpu, 2> mask_, tmpw_, L_, Lsq_;
+        std::vector<int> whist;
+    }; // class StratifiedSamplingLayer
+
+    template<typename xpu>
+    class SimBasedDropinLayer : public FullConnectLayer<xpu> {
+    public:
+        SimBasedDropinLayer(mshadow::Random<xpu> &rnd, Node<xpu> &in, Node<xpu> &out)
+            : Parent(rnd, in, out) {}
+
+        struct elemwise_log {
+          MSHADOW_XINLINE static real_t Map(real_t a) {
+            if (a < 1E-8) {
+              return -18.0; // Approximately log(1E-8), a form of Lapacian smoothing
+            } else {
+              return log(a);
+            }
+          }
+        };
+        struct elemwise_sqrt {
+          MSHADOW_XINLINE static real_t Map(real_t a) {
+            return sqrt(a);
+          }
+        };
+        struct elemwise_square {
+          MSHADOW_XINLINE static real_t Map(real_t a) {
+            return a*a;
+          }
+        };
+
+        real_t logsumexp(std::vector<real_t> v) {
+          // Find max
+          real_t mx = v[0];
+          for (int i=1; i<v.size(); i++) {
+            if (v[i] > mx) {
+              mx = v[i];
+            }
+          }
+
+          real_t s = 0.0;
+          // Log-sum-exp trick
+          for (int i=0; i<v.size(); i++) {
+            s += exp(v[i] - mx);
+          }
+
+          real_t lse = mx + log(s);
+
+          return lse;
+        }
+
+        virtual void Forward(bool is_train) {
+            if( is_train ){
+                const real_t pkeep = 1.0f - Parent::param_.dropout_threshold;
+
+                // The mask is a 4D tensor with the dimensions [ D , n_batch , 1, 1]
+                // You CAN directly set mask entries if it's on the GPU. I don't
+                // get it..
+                mask_ = F<op::threshold>( Parent::rnd_.uniform( mask_.shape ), pkeep ) * (1.0f/pkeep);
+                int N = mask_.shape[0];
+
+                // BEGIN SIM-BASED SAMPLING
+
+                // First we normalize all the vectors
+                w_normed = this->wmat_+0.0;
+                for (unsigned int j=0; j<this->wmat_.shape[0]; j++) {
+                  real_t w_normalizer = 0.0;
+                  for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                    w_normalizer += this->wmat_[i][j]*this->wmat_[i][j];
+                  }
+
+                  w_normalizer = sqrt(w_normalizer);
+                  
+                  for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                    w_normed[i][j] = w_normed[i][j]/w_normalizer;
+                  }
+                }
+
+                L_ = dot(w_normed.T(), w_normed);
+                D_ =  (1 - L_ * L_);
+                D_ = F<elemwise_log>(D_);
+
+                // Sample k from a binomial distribution
+                // Not fancy but works for now
+                int k=0;
+                for (int i=0; i<N; i++) {
+                  float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+                  if (r > pkeep) {
+                    k++;
+                  }
+                }
+
+                // Use SBS to pick diverse points to not drop out
+                std::vector<bool> keep_idx(N, false);
+                
+                // First, we start from a random point
+                int j = rand() % N;
+                keep_idx[j] = true;
+                if (this->wmat_.shape[1] == 800) {
+                  unit_hist_layer1[j] += 1;
+                } else {
+                  unit_hist_layer2[j] += 1;
+                }
+
+                // This vector will store the unnormalized values, initialize it
+                // with the random element.
+                std::vector<real_t> p_unnorm(N, false);
+                for (int i=0; i<N; i++) {
+                  p_unnorm[i] = D_[i][j];
+                }
+
+                // This is working space where we will store the normalized
+                // distribution
+                std::vector<real_t> p_norm(N, 0.0);
+                std::vector<real_t> p_cdf(N, 0.0);
+
+                int count = 1;
+                // Now we sample the rest of the k-1 points
+                for (int i=0; i<k-1; i++) {
+                  // Generate the current distribution
+                  real_t norm_factor = logsumexp(p_unnorm);
+                  float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+
+                  int idx = -1;
+                  for (int j=0; j<p_unnorm.size(); j++) {
+                    idx = j;
+
+                    p_norm[j] = exp(p_unnorm[j] - norm_factor);
+
+                    if (j==0) {
+                      p_cdf[j] = p_norm[j];
+                    } else {
+                      p_cdf[j] = p_norm[j] + p_cdf[j-1];
+                    }
+
+                    if (r <= p_cdf[j]) {
+                      break;
+                    }
+                  }
+
+                  // If we haven't picked this, update, if not, ignore and
+                  // continue
+                  if (! keep_idx[idx]) {
+                    keep_idx[idx] = true;
+                    count++;
+
+                    if (this->wmat_.shape[1] == 800) {
+                      unit_hist_layer1[idx] += 1;
+                    } else {
+                      unit_hist_layer2[idx] += 1;
+                    }
+
+                    for (int j=0; j<p_unnorm.size(); j++) {
+                      p_unnorm[j] += D_[j][idx];
+                    }
+                  }
+                }
+
+                // Pick random units if we don't match k
+                if (count < k) {
+                  for (int i=count; i<k; i++) {
+                    int j = rand() % N;
+                    while (keep_idx[j]) {
+                      j = rand() % N;
+                    }
+                    keep_idx[j] = true;
+
+                    if (this->wmat_.shape[1] == 800) {
+                      unit_hist_layer1[j] += 1;
+                    } else {
+                      unit_hist_layer2[j] += 1;
+                    }
+                    
+                  }
+                }
+
+                for (unsigned int i=0; i<mask_.shape[0]; i++) {
+                  for (unsigned int j=0; j<mask_.shape[1]; j++) {
+                    if (keep_idx[i]) {
+                      mask_[0][0][j][i]  = 1.0f/pkeep;
+                    } else {
+                      mask_[0][0][j][i]  = 0.0;
+                    }
+                  }
+                }
+
+                this->in_.data = this->in_.data * mask_;
+            }
+
+
+            Parent::Forward( this->wmat_ );
+        }
+        virtual void Backprop(bool prop_grad) {
+            Parent::Backprop( prop_grad, this->wmat_ );
+            if (prop_grad) {
+                this->in_.data *= mask_;
+            }
+        }
+        virtual void InitLayer( void ){
+            Parent::InitLayer();
+            mask_.Resize( this->in_.data.shape );
+            L_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            D_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            p.Resize(mshadow::Shape1(D_.shape[0]));
+
+            this->w_normed.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+            p_unnorm.Resize(mshadow::Shape1(D_.shape[0]));
+
+            counter = 0;
+
+            for (int i=0; i<800; i++) {
+              unit_hist_layer1.push_back(0);
+              unit_hist_layer2.push_back(0);
+            }
+
+        }
+    private:
+        typedef FullConnectLayer<xpu> Parent;
+    private:
+        mshadow::TensorContainer<xpu, 4> mask_;
+        mshadow::TensorContainer<xpu, 2> L_, D_;
+        mshadow::TensorContainer<xpu, 2> w_normed;
+        mshadow::TensorContainer<xpu, 1> p, p_unnorm;
+        std::vector<int> unit_hist_layer1;
+        std::vector<int> unit_hist_layer2;
+        int counter;
+    }; // class SimBasedDropinLayer
     
+    template<typename xpu>
+    class SimBasedDropoutLayer : public FullConnectLayer<xpu> {
+    public:
+        SimBasedDropoutLayer(mshadow::Random<xpu> &rnd, Node<xpu> &in, Node<xpu> &out)
+            : Parent(rnd, in, out) {}
+
+        struct elemwise_log {
+          MSHADOW_XINLINE static real_t Map(real_t a) {
+            if (a < 1E-8) {
+              return -18.0; // Approximately log(1E-8), a form of Lapacian smoothing
+            } else {
+              return log(a);
+            }
+          }
+        };
+        struct elemwise_sqrt {
+          MSHADOW_XINLINE static real_t Map(real_t a) {
+            return sqrt(a);
+          }
+        };
+        struct elemwise_square {
+          MSHADOW_XINLINE static real_t Map(real_t a) {
+            return a*a;
+          }
+        };
+
+        real_t logsumexp(std::vector<real_t> v) {
+          // Find max
+          real_t mx = v[0];
+          for (int i=1; i<v.size(); i++) {
+            if (v[i] > mx) {
+              mx = v[i];
+            }
+          }
+
+          real_t s = 0.0;
+          // Log-sum-exp trick
+          for (int i=0; i<v.size(); i++) {
+            s += exp(v[i] - mx);
+          }
+
+          real_t lse = mx + log(s);
+
+          return lse;
+        }
+
+        virtual void Forward(bool is_train) {
+            if( is_train ){
+                const real_t pkeep = 1.0f - Parent::param_.dropout_threshold;
+
+                mask_ = F<op::threshold>( Parent::rnd_.uniform( mask_.shape ), pkeep ) * (1.0f/pkeep);
+                int N = mask_.shape[0];
+
+                // BEGIN SIM-BASED SAMPLING
+
+                // First we normalize all the vectors
+                w_normed = this->wmat_+0.0;
+                for (unsigned int j=0; j<this->wmat_.shape[0]; j++) {
+                  real_t w_normalizer = 0.0;
+                  for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                    w_normalizer += this->wmat_[i][j]*this->wmat_[i][j];
+                  }
+
+                  w_normalizer = sqrt(w_normalizer);
+                  
+                  for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                    w_normed[i][j] = w_normed[i][j]/w_normalizer;
+                  }
+                }
+
+                L_ = dot(w_normed.T(), w_normed);
+                D_ =  (1 - L_ * L_);
+                D_ = F<elemwise_log>(D_);
+
+                // Sample k from a binomial distribution
+                // Not fancy but works for now
+                int k=0;
+                for (int i=0; i<N; i++) {
+                  float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+                  if (r > pkeep) {
+                    k++;
+                  }
+                }
+
+                // Use SBS to pick diverse points to not drop out
+                std::vector<bool> keep_idx(N, false);
+                
+                // First, we start from a random point
+                int j = rand() % N;
+                keep_idx[j] = true;
+                if (this->wmat_.shape[1] == 200) {
+                  unit_hist_layer1[j] += 1;
+                } else {
+                  unit_hist_layer2[j] += 1;
+                }
+
+                // This vector will store the unnormalized values, initialize it
+                // with the random element.
+                std::vector<real_t> p_unnorm(N, false);
+                for (int i=0; i<N; i++) {
+                  p_unnorm[i] = D_[i][j];
+                }
+
+                // This is working space where we will store the normalized
+                // distribution
+                std::vector<real_t> p_norm(N, 0.0);
+                std::vector<real_t> p_cdf(N, 0.0);
+
+                int count = 1;
+                // Now we sample the rest of the k-1 points
+                for (int i=0; i<k-1; i++) {
+                  // Generate the current distribution
+                  real_t norm_factor = logsumexp(p_unnorm);
+                  float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+
+                  int idx = -1;
+                  for (int j=0; j<p_unnorm.size(); j++) {
+                    idx = j;
+
+                    p_norm[j] = exp(p_unnorm[j] - norm_factor);
+
+                    if (j==0) {
+                      p_cdf[j] = p_norm[j];
+                    } else {
+                      p_cdf[j] = p_norm[j] + p_cdf[j-1];
+                    }
+
+                    if (r <= p_cdf[j]) {
+                      break;
+                    }
+                  }
+
+                  // If we haven't picked this, update, if not, ignore and
+                  // continue
+                  if (! keep_idx[idx]) {
+                    keep_idx[idx] = true;
+                    count++;
+
+                    if (this->wmat_.shape[1] == 200) {
+                      unit_hist_layer1[idx] += 1;
+                    } else {
+                      unit_hist_layer2[idx] += 1;
+                    }
+
+                    for (int j=0; j<p_unnorm.size(); j++) {
+                      p_unnorm[j] += D_[j][idx];
+                    }
+                  }
+                }
+
+                if (this->wmat_.shape[1] == 200) {
+                  k_vals_layer1.push_back(k);
+                  count_vals_layer1.push_back(count);
+                } else {
+                  k_vals_layer2.push_back(k);
+                  count_vals_layer2.push_back(count);
+                }
+
+                // Pick random units if we don't match k
+                if (count < k) {
+                  for (int i=count; i<k; i++) {
+                    int j = rand() % N;
+                    while (keep_idx[j]) {
+                      j = rand() % N;
+                    }
+                    keep_idx[j] = true;
+
+                    if (this->wmat_.shape[1] == 200) {
+                      unit_hist_layer1[j] += 1;
+                    } else {
+                      unit_hist_layer2[j] += 1;
+                    }
+                    
+                  }
+                }
+
+                for (unsigned int i=0; i<mask_.shape[0]; i++) {
+                  float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+                  for (unsigned int j=0; j<mask_.shape[1]; j++) {
+                    //if (r > pkeep) {
+                    if (!keep_idx[i]) {
+                      mask_[0][0][j][i]  = 1.0f/pkeep;
+                    } else {
+                      mask_[0][0][j][i]  = 0.0;
+                    }
+                  }
+                }
+
+
+                counter++;
+                if (counter%(600*50)==0) {
+                  if (this->wmat_.shape[1] == 200) {
+                    std::ofstream hist1file;
+                    hist1file.open("hist1.txt");
+                    for (unsigned int j=0; j<unit_hist_layer1.size(); j++) {
+                      hist1file << unit_hist_layer1[j] << "\n";
+                    }
+                    hist1file.flush();
+                    hist1file.close();
+
+                    std::ofstream kvals_file;
+                    kvals_file.open("kvals1.txt");
+                    for (unsigned int j=0; j<k_vals_layer1.size(); j++) {
+                      kvals_file << k_vals_layer1[j] << "\n";
+                    }
+                    kvals_file.flush();
+                    kvals_file.close();
+
+                    std::ofstream countvals_file;
+                    countvals_file.open("countvals1.txt");
+                    for (unsigned int j=0; j<count_vals_layer1.size(); j++) {
+                      countvals_file << count_vals_layer1[j] << "\n";
+                    }
+                    countvals_file.flush();
+                    countvals_file.close();
+
+                    //std::ofstream wmatfile;
+                    //wmatfile.open("wmat1.txt");
+                    //for (unsigned int j=0; j<this->wmat_.shape[0]; j++) {
+                      //for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                        //wmatfile << this->wmat_[i][j] << ",";
+                      //}
+                      //wmatfile << "\n";
+                    //}
+                    //wmatfile.flush();
+                    //wmatfile.close();
+                  } else {
+                    std::ofstream hist2file;
+                    hist2file.open("hist2.txt");
+                    for (unsigned int j=0; j<unit_hist_layer2.size(); j++) {
+                      hist2file << unit_hist_layer2[j] << "\n";
+                    }
+                    hist2file.flush();
+                    hist2file.close();
+
+                    std::ofstream kvals_file;
+                    kvals_file.open("kvals2.txt");
+                    for (unsigned int j=0; j<k_vals_layer2.size(); j++) {
+                      kvals_file << k_vals_layer2[j] << "\n";
+                    }
+                    kvals_file.flush();
+                    kvals_file.close();
+
+                    std::ofstream countvals_file;
+                    countvals_file.open("countvals2.txt");
+                    for (unsigned int j=0; j<count_vals_layer2.size(); j++) {
+                      countvals_file << count_vals_layer2[j] << "\n";
+                    }
+                    countvals_file.flush();
+                    countvals_file.close();
+                  }
+                  exit(0);
+                }
+
+                    //std::ofstream wmatfile;
+                    //wmatfile.open("wmat2.txt");
+                    //for (unsigned int j=0; j<this->wmat_.shape[0]; j++) {
+                      //for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                        //wmatfile << this->wmat_[i][j] << ",";
+                      //}
+                      //wmatfile << "\n";
+                    //}
+                    //wmatfile.flush();
+                    //wmatfile.close();
+
+                    //exit(0);
+                  //}
+                //}
+
+                  //std::ofstream p_unnormfile;
+                  //p_unnormfile.open("p_unnorm.txt");
+                  //for (unsigned int j=0; j<p_unnorm.size(); j++) {
+                    //p_unnormfile << p_unnorm[j] << "\n";
+                  //}
+                  //p_unnormfile.flush();
+                  //p_unnormfile.close();
+
+                  ////std::cout << "LSE is: " << logsumexp(p_unnorm) << std::endl;
+
+                  //exit(0);
+                //}
+                  //std::ofstream wmatfile;
+                  //wmatfile.open("wmat.txt");
+                  //for (unsigned int j=0; j<this->wmat_.shape[0]; j++) {
+                    //for (unsigned int i=0; i<this->wmat_.shape[1]; i++) {
+                      //wmatfile << this->wmat_[i][j] << ",";
+                    //}
+                    //wmatfile << "\n";
+                  //}
+                  //wmatfile.flush();
+                  //wmatfile.close();
+
+                  ////std::ofstream wmatnormedfile;
+                  ////wmatnormedfile.open("wmatnormed.txt");
+                  ////for (unsigned int j=0; j<w_normed.shape[0]; j++) {
+                    ////for (unsigned int i=0; i<w_normed.shape[1]; i++) {
+                      ////wmatnormedfile << w_normed[i][j] << ",";
+                    ////}
+                    ////wmatnormedfile << "\n";
+                  ////}
+                  ////wmatnormedfile.flush();
+                  ////wmatnormedfile.close();
+
+                  //std::ofstream Lfile, Dfile;
+                  //Lfile.open("L.txt");
+                  //for (unsigned int j=0; j<L_.shape[0]; j++) {
+                    //for (unsigned int i=0; i<L_.shape[1]; i++) {
+                      //Lfile << L_[i][j] << ",";
+                    //}
+                    //Lfile << "\n";
+                  //}
+                  //Lfile.flush();
+                  //Lfile.close();
+
+                  //Dfile.open("D.txt");
+                  //for (unsigned int j=0; j<D_.shape[0]; j++) {
+                    //for (unsigned int i=0; i<D_.shape[1]; i++) {
+                      //Dfile << D_[i][j] << ",";
+                    //}
+                    //Dfile << "\n";
+                  //}
+                  //Dfile.flush();
+                  //Dfile.close();
+
+                  //exit(1);
+                //}
+
+                this->in_.data = this->in_.data * mask_;
+
+            }
+
+
+            Parent::Forward( this->wmat_ );
+        }
+        virtual void Backprop(bool prop_grad) {
+            Parent::Backprop( prop_grad, this->wmat_ );
+            if (prop_grad) {
+                this->in_.data *= mask_;
+            }
+        }
+        virtual void InitLayer( void ){
+            Parent::InitLayer();
+            mask_.Resize( this->in_.data.shape );
+            L_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            D_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            p.Resize(mshadow::Shape1(D_.shape[0]));
+
+            this->w_normed.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+            p_unnorm.Resize(mshadow::Shape1(D_.shape[0]));
+
+            counter = 0;
+
+            for (int i=0; i<200; i++) {
+              unit_hist_layer1.push_back(0);
+              unit_hist_layer2.push_back(0);
+            }
+
+        }
+    private:
+        typedef FullConnectLayer<xpu> Parent;
+    private:
+        mshadow::TensorContainer<xpu, 4> mask_;
+        mshadow::TensorContainer<xpu, 2> L_, D_;
+        mshadow::TensorContainer<xpu, 2> w_normed;
+        mshadow::TensorContainer<xpu, 1> p, p_unnorm;
+        std::vector<int> unit_hist_layer1;
+        std::vector<int> unit_hist_layer2;
+        std::vector<int> k_vals_layer1;
+        std::vector<int> k_vals_layer2;
+        std::vector<int> count_vals_layer1;
+        std::vector<int> count_vals_layer2;
+        int counter;
+    }; // class SimBasedDropoutLayer
+
+    template<typename xpu>
+    class MyDropoutLayer : public FullConnectLayer<xpu> {
+    public:
+        MyDropoutLayer(mshadow::Random<xpu> &rnd, Node<xpu> &in, Node<xpu> &out)
+            : Parent(rnd, in, out) {}
+
+
+        virtual void Forward(bool is_train) {
+            if( is_train ){
+                const real_t pkeep = 1.0f - Parent::param_.dropout_threshold;
+
+                mask_ = F<op::threshold>( Parent::rnd_.uniform( mask_.shape ), pkeep ) * (1.0f/pkeep);
+                int N = mask_.shape[0];
+
+                // First we normalize all the vectors
+                for (unsigned int i=0; i<mask_.shape[0]; i++) {
+                  float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+                  for (unsigned int j=0; j<mask_.shape[1]; j++) {
+                    if (r > pkeep) {
+                      mask_[0][0][j][i]  = 1.0f/pkeep;
+                    } else {
+                      mask_[0][0][j][i]  = 0.0;
+                    }
+                  }
+                }
+                this->in_.data = this->in_.data * mask_;
+            }
+
+            Parent::Forward( this->wmat_ );
+        }
+        virtual void Backprop(bool prop_grad) {
+            Parent::Backprop( prop_grad, this->wmat_ );
+            if (prop_grad) {
+                this->in_.data *= mask_;
+            }
+        }
+        virtual void InitLayer( void ){
+            Parent::InitLayer();
+            mask_.Resize( this->in_.data.shape );
+
+        }
+    private:
+        typedef FullConnectLayer<xpu> Parent;
+    private:
+        mshadow::TensorContainer<xpu, 4> mask_;
+    }; // class MyDropoutLayer
+
+    template<typename xpu>
+    class MyDropoutPerMbatchLayer : public FullConnectLayer<xpu> {
+    public:
+        MyDropoutPerMbatchLayer(mshadow::Random<xpu> &rnd, Node<xpu> &in, Node<xpu> &out)
+            : Parent(rnd, in, out) {}
+
+        virtual void Forward(bool is_train) {
+            if( is_train ){
+                const real_t pkeep = 1.0f - Parent::param_.dropout_threshold;
+
+                mask_ = F<op::threshold>( Parent::rnd_.uniform( mask_.shape ), pkeep ) * (1.0f/pkeep);
+                int N = mask_.shape[0];
+
+                // First we normalize all the vectors
+                for (unsigned int i=0; i<mask_.shape[0]; i++) {
+                  for (unsigned int j=0; j<mask_.shape[1]; j++) {
+                    float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+                    if (r > pkeep) {
+                      mask_[0][0][j][i]  = 1.0f/pkeep;
+                    } else {
+                      mask_[0][0][j][i]  = 0.0;
+                    }
+                  }
+                }
+                this->in_.data = this->in_.data * mask_;
+            }
+
+            Parent::Forward( this->wmat_ );
+        }
+        virtual void Backprop(bool prop_grad) {
+            Parent::Backprop( prop_grad, this->wmat_ );
+            if (prop_grad) {
+                this->in_.data *= mask_;
+            }
+        }
+        virtual void InitLayer( void ){
+            Parent::InitLayer();
+            mask_.Resize( this->in_.data.shape );
+        }
+    private:
+        typedef FullConnectLayer<xpu> Parent;
+    private:
+        mshadow::TensorContainer<xpu, 4> mask_;
+    }; // class MyDropoutPerMbatchLayer
 
     template<typename xpu>
     class DropoutLayer : public ILayer {
@@ -935,6 +2076,15 @@ namespace cxxnet{
         if( !strcmp( type, "dropconn") ) return kDropConn;
         if( !strcmp( type, "dpp_dropout") ) return kDppDropout;
         if( !strcmp( type, "dpp_dropin") ) return kDppDropin;
+        if( !strcmp( type, "strata") ) return kStrata;
+        if( !strcmp( type, "simbased_dropout") ) return kSimBasedDropout;
+        if( !strcmp( type, "simbased_dropin") ) return kSimBasedDropin;
+        if( !strcmp( type, "my_dropout") ) return kMyDropout;
+        if( !strcmp( type, "my_dropout_permbatch") ) return kMyDropoutPerMbatch;
+        if( !strcmp( type, "dpp_dropout_onlyquality") ) return kDppDropoutOnlyQuality;
+        //if( !strcmp( type, "dpp_dropin_onlyquality") ) return kDppDropinOnlyQuality;
+        if( !strcmp( type, "dpp_dropout_onlysimilarity") ) return kDppDropoutOnlySimilarity;
+        if( !strcmp( type, "dpp_dropin_onlysimilarity") ) return kDppDropinOnlySimilarity;
         if( !strcmp( type, "conv") )     return kConv;
         if( !strcmp( type, "max_pooling")) return kMaxPooling;
         if( !strcmp( type, "sum_pooling")) return kSumPooling;
@@ -965,6 +2115,15 @@ namespace cxxnet{
         case kDropout: return new DropoutLayer<xpu>(rnd, in, out);
         case kDppDropout: return new DppDropoutLayer<xpu>(rnd, in, out);
         case kDppDropin: return new DppDropinLayer<xpu>(rnd, in, out);
+        case kStrata: return new StratifiedSamplingLayer<xpu>(rnd, in, out);
+        case kSimBasedDropout: return new SimBasedDropoutLayer<xpu>(rnd, in, out);
+        case kSimBasedDropin: return new SimBasedDropinLayer<xpu>(rnd, in, out);
+        case kMyDropout: return new MyDropoutLayer<xpu>(rnd, in, out);
+        case kMyDropoutPerMbatch: return new MyDropoutPerMbatchLayer<xpu>(rnd, in, out);
+        case kDppDropoutOnlyQuality: return new DppDropoutOnlyQualityLayer<xpu>(rnd, in, out);
+        //case kDppDropinOnlyQuality: return new DppDropinOnlyQualityLayer<xpu>(rnd, in, out);
+        case kDppDropoutOnlySimilarity: return new DppDropoutOnlySimilarityLayer<xpu>(rnd, in, out);
+        case kDppDropinOnlySimilarity: return new DppDropinOnlySimilarityLayer<xpu>(rnd, in, out);
         case kConv:    return new ConvolutionLayer<xpu>( rnd, in, out );
         case kMaxPooling: return new PoolingLayer<mshadow::red::maximum, false, xpu>(in, out);
         case kSumPooling: return new PoolingLayer<mshadow::red::sum, false, xpu>(in, out);
