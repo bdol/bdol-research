@@ -300,6 +300,7 @@ namespace cxxnet {
         const int kDppDropinOnlyQuality = 24;
         const int kDppDropoutOnlySimilarity = 25;
         const int kDppDropinOnlySimilarity = 26;
+        const int kSimBasedDropoutGPU = 27;
         const int kCaffe = 100;
     };
     /*! \brief namespace for type of random init method */

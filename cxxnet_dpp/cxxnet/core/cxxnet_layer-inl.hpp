@@ -1583,6 +1583,18 @@ namespace cxxnet {
                 D_ =  (1 - L_ * L_);
                 D_ = F<elemwise_log>(D_);
 
+                std::ofstream Dfile;
+                Dfile.open("D_cpu.txt");
+                for (unsigned int j=0; j<this->D_.shape[0]; j++) {
+                  for (unsigned int i=0; i<this->D_.shape[1]; i++) {
+                    Dfile << this->D_[i][j] << ",";
+                  }
+                  Dfile << "\n";
+                }
+                Dfile.flush();
+                Dfile.close();
+                exit(0);
+
                 // Sample k from a binomial distribution
                 // Not fancy but works for now
                 int k=0;
@@ -1599,11 +1611,11 @@ namespace cxxnet {
                 // First, we start from a random point
                 int j = rand() % N;
                 keep_idx[j] = true;
-                if (this->wmat_.shape[1] == 200) {
-                  unit_hist_layer1[j] += 1;
-                } else {
-                  unit_hist_layer2[j] += 1;
-                }
+                //if (this->wmat_.shape[1] == 500) {
+                  //unit_hist_layer1[j] += 1;
+                //} else {
+                  //unit_hist_layer2[j] += 1;
+                //}
 
                 // This vector will store the unnormalized values, initialize it
                 // with the random element.
@@ -1619,7 +1631,7 @@ namespace cxxnet {
 
                 int count = 1;
                 // Now we sample the rest of the k-1 points
-                for (int i=0; i<k-1; i++) {
+                for (int i=0; i<k; i++) {
                   // Generate the current distribution
                   real_t norm_factor = logsumexp(p_unnorm);
                   float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
@@ -1647,11 +1659,11 @@ namespace cxxnet {
                     keep_idx[idx] = true;
                     count++;
 
-                    if (this->wmat_.shape[1] == 200) {
-                      unit_hist_layer1[idx] += 1;
-                    } else {
-                      unit_hist_layer2[idx] += 1;
-                    }
+                    //if (this->wmat_.shape[1] == 500) {
+                      //unit_hist_layer1[idx] += 1;
+                    //} else {
+                      //unit_hist_layer2[idx] += 1;
+                    //}
 
                     for (int j=0; j<p_unnorm.size(); j++) {
                       p_unnorm[j] += D_[j][idx];
@@ -1659,7 +1671,7 @@ namespace cxxnet {
                   }
                 }
 
-                if (this->wmat_.shape[1] == 200) {
+                if (this->wmat_.shape[1] == 500) {
                   k_vals_layer1.push_back(k);
                   count_vals_layer1.push_back(count);
                 } else {
@@ -1676,11 +1688,11 @@ namespace cxxnet {
                     }
                     keep_idx[j] = true;
 
-                    if (this->wmat_.shape[1] == 200) {
-                      unit_hist_layer1[j] += 1;
-                    } else {
-                      unit_hist_layer2[j] += 1;
-                    }
+                    //if (this->wmat_.shape[1] == 500) {
+                      //unit_hist_layer1[j] += 1;
+                    //} else {
+                      //unit_hist_layer2[j] += 1;
+                    //}
                     
                   }
                 }
@@ -1698,32 +1710,32 @@ namespace cxxnet {
                 }
 
 
-                counter++;
-                if (counter%(600*50)==0) {
-                  if (this->wmat_.shape[1] == 200) {
-                    std::ofstream hist1file;
-                    hist1file.open("hist1.txt");
-                    for (unsigned int j=0; j<unit_hist_layer1.size(); j++) {
-                      hist1file << unit_hist_layer1[j] << "\n";
-                    }
-                    hist1file.flush();
-                    hist1file.close();
+                //counter++;
+                //if (counter%(600*50)==0) {
+                  //if (this->wmat_.shape[1] == 500) {
+                    //std::ofstream hist1file;
+                    //hist1file.open("hist1.txt");
+                    //for (unsigned int j=0; j<unit_hist_layer1.size(); j++) {
+                      //hist1file << unit_hist_layer1[j] << "\n";
+                    //}
+                    //hist1file.flush();
+                    //hist1file.close();
 
-                    std::ofstream kvals_file;
-                    kvals_file.open("kvals1.txt");
-                    for (unsigned int j=0; j<k_vals_layer1.size(); j++) {
-                      kvals_file << k_vals_layer1[j] << "\n";
-                    }
-                    kvals_file.flush();
-                    kvals_file.close();
+                    //std::ofstream kvals_file;
+                    //kvals_file.open("kvals1.txt");
+                    //for (unsigned int j=0; j<k_vals_layer1.size(); j++) {
+                      //kvals_file << k_vals_layer1[j] << "\n";
+                    //}
+                    //kvals_file.flush();
+                    //kvals_file.close();
 
-                    std::ofstream countvals_file;
-                    countvals_file.open("countvals1.txt");
-                    for (unsigned int j=0; j<count_vals_layer1.size(); j++) {
-                      countvals_file << count_vals_layer1[j] << "\n";
-                    }
-                    countvals_file.flush();
-                    countvals_file.close();
+                    //std::ofstream countvals_file;
+                    //countvals_file.open("countvals1.txt");
+                    //for (unsigned int j=0; j<count_vals_layer1.size(); j++) {
+                      //countvals_file << count_vals_layer1[j] << "\n";
+                    //}
+                    //countvals_file.flush();
+                    //countvals_file.close();
 
                     //std::ofstream wmatfile;
                     //wmatfile.open("wmat1.txt");
@@ -1735,33 +1747,30 @@ namespace cxxnet {
                     //}
                     //wmatfile.flush();
                     //wmatfile.close();
-                  } else {
-                    std::ofstream hist2file;
-                    hist2file.open("hist2.txt");
-                    for (unsigned int j=0; j<unit_hist_layer2.size(); j++) {
-                      hist2file << unit_hist_layer2[j] << "\n";
-                    }
-                    hist2file.flush();
-                    hist2file.close();
+                  //} else {
+                    //std::ofstream hist2file;
+                    //hist2file.open("hist2.txt");
+                    //for (unsigned int j=0; j<unit_hist_layer2.size(); j++) {
+                      //hist2file << unit_hist_layer2[j] << "\n";
+                    //}
+                    //hist2file.flush();
+                    //hist2file.close();
 
-                    std::ofstream kvals_file;
-                    kvals_file.open("kvals2.txt");
-                    for (unsigned int j=0; j<k_vals_layer2.size(); j++) {
-                      kvals_file << k_vals_layer2[j] << "\n";
-                    }
-                    kvals_file.flush();
-                    kvals_file.close();
+                    //std::ofstream kvals_file;
+                    //kvals_file.open("kvals2.txt");
+                    //for (unsigned int j=0; j<k_vals_layer2.size(); j++) {
+                      //kvals_file << k_vals_layer2[j] << "\n";
+                    //}
+                    //kvals_file.flush();
+                    //kvals_file.close();
 
-                    std::ofstream countvals_file;
-                    countvals_file.open("countvals2.txt");
-                    for (unsigned int j=0; j<count_vals_layer2.size(); j++) {
-                      countvals_file << count_vals_layer2[j] << "\n";
-                    }
-                    countvals_file.flush();
-                    countvals_file.close();
-                  }
-                  exit(0);
-                }
+                    //std::ofstream countvals_file;
+                    //countvals_file.open("countvals2.txt");
+                    //for (unsigned int j=0; j<count_vals_layer2.size(); j++) {
+                      //countvals_file << count_vals_layer2[j] << "\n";
+                    //}
+                    //countvals_file.flush();
+                    //countvals_file.close();
 
                     //std::ofstream wmatfile;
                     //wmatfile.open("wmat2.txt");
@@ -1773,10 +1782,11 @@ namespace cxxnet {
                     //}
                     //wmatfile.flush();
                     //wmatfile.close();
-
                     //exit(0);
                   //}
                 //}
+
+
 
                   //std::ofstream p_unnormfile;
                   //p_unnormfile.open("p_unnorm.txt");
@@ -1861,7 +1871,7 @@ namespace cxxnet {
 
             counter = 0;
 
-            for (int i=0; i<200; i++) {
+            for (int i=0; i<500; i++) {
               unit_hist_layer1.push_back(0);
               unit_hist_layer2.push_back(0);
             }
@@ -1882,6 +1892,214 @@ namespace cxxnet {
         std::vector<int> count_vals_layer2;
         int counter;
     }; // class SimBasedDropoutLayer
+
+    template<typename xpu>
+    class SimBasedDropoutGPULayer : public FullConnectLayer<xpu> {
+    public:
+        SimBasedDropoutGPULayer(mshadow::Random<xpu> &rnd, Node<xpu> &in, Node<xpu> &out)
+            : Parent(rnd, in, out) {}
+
+        struct elemwise_log {
+          MSHADOW_XINLINE static real_t Map(real_t a) {
+            if (a < 1E-8) {
+              return -18.0; // Approximately log(1E-8), a form of Lapacian smoothing
+            } else {
+              return log(a);
+            }
+          }
+        };
+        struct elemwise_sqrt {
+          MSHADOW_XINLINE static real_t Map(real_t a) {
+            return sqrt(a);
+          }
+        };
+        struct elemwise_square {
+          MSHADOW_XINLINE static real_t Map(real_t a) {
+            return a*a;
+          }
+        };
+        struct elemwise_divide {
+          MSHADOW_XINLINE static real_t Map( real_t a, real_t b) {
+            return a/b;
+          }
+        };
+
+        real_t logsumexp(std::vector<real_t> v) {
+          // Find max
+          real_t mx = v[0];
+          for (int i=1; i<v.size(); i++) {
+            if (v[i] > mx) {
+              mx = v[i];
+            }
+          }
+
+          real_t s = 0.0;
+          // Log-sum-exp trick
+          for (int i=0; i<v.size(); i++) {
+            s += exp(v[i] - mx);
+          }
+
+          real_t lse = mx + log(s);
+
+          return lse;
+        }
+
+        virtual void Forward(bool is_train) {
+            if( is_train ){
+                const real_t pkeep = 1.0f - Parent::param_.dropout_threshold;
+
+                mask_ = F<op::threshold>( Parent::rnd_.uniform( mask_.shape ), pkeep ) * (1.0f/pkeep);
+                int N = mask_.shape[0];
+
+                // First we normalize all the vectors
+                Copy(w_normed, this->wmat_);
+                w_normed = F<elemwise_square>(w_normed);
+                w_normalizer = sumall_except_dim<0>(w_normed);
+                w_normalizer = F<elemwise_sqrt>(w_normalizer);
+
+                // This is a bit weird that we're broadcasting along dim. 0, but
+                // mshadow orders dimensions based on size, not rows/cols
+                w_normalizer_repmat = broadcast<0>(w_normalizer, w_normalizer_repmat.shape);
+                w_normed = F<elemwise_divide>(this->wmat_, w_normalizer_repmat);
+
+                L_ = dot(w_normed.T(), w_normed);
+                D_ =  (1 - L_ * L_);
+                D_ = F<elemwise_log>(D_);
+                Copy(D_host, D_);
+
+                // Sample k from a binomial distribution
+                // Not fancy but works for now
+                int k=0;
+                for (int i=0; i<N; i++) {
+                  float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+                  if (r > pkeep) {
+                    k++;
+                  }
+                }
+
+                // Use SBS to pick diverse points to not drop out
+                std::vector<bool> keep_idx(N, false);
+                
+                // First, we start from a random point
+                int j = rand() % N;
+                keep_idx[j] = true;
+
+                // This vector will store the unnormalized values, initialize it
+                // with the random element.
+                std::vector<real_t> p_unnorm(N, false);
+                for (int i=0; i<N; i++) {
+                  p_unnorm[i] = D_host[i][j];
+                }
+
+                // This is working space where we will store the normalized
+                // distribution
+                std::vector<real_t> p_norm(N, 0.0);
+                std::vector<real_t> p_cdf(N, 0.0);
+
+                int count = 1;
+                // Now we sample the rest of the k-1 points
+                for (int i=0; i<k; i++) {
+                  // Generate the current distribution
+                  real_t norm_factor = logsumexp(p_unnorm);
+                  float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+
+                  int idx = -1;
+                  for (int j=0; j<p_unnorm.size(); j++) {
+                    idx = j;
+
+                    p_norm[j] = exp(p_unnorm[j] - norm_factor);
+
+                    if (j==0) {
+                      p_cdf[j] = p_norm[j];
+                    } else {
+                      p_cdf[j] = p_norm[j] + p_cdf[j-1];
+                    }
+
+                    if (r <= p_cdf[j]) {
+                      break;
+                    }
+                  }
+
+                  // If we haven't picked this, update, if not, ignore and
+                  // continue
+                  if (! keep_idx[idx]) {
+                    keep_idx[idx] = true;
+                    count++;
+
+                    for (int j=0; j<p_unnorm.size(); j++) {
+                      p_unnorm[j] += D_host[j][idx];
+                    }
+                  }
+                }
+
+                // Pick random units if we don't match k
+                if (count < k) {
+                  for (int i=count; i<k; i++) {
+                    int j = rand() % N;
+                    while (keep_idx[j]) {
+                      j = rand() % N;
+                    }
+                    keep_idx[j] = true;
+                    
+                  }
+                }
+
+                for (unsigned int i=0; i<mask_host.shape[0]; i++) {
+                  float r = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+                  for (unsigned int j=0; j<mask_host.shape[1]; j++) {
+                    //if (r > pkeep) {
+                    if (!keep_idx[i]) {
+                      mask_host[0][0][j][i]  = 1.0f/pkeep;
+                    } else {
+                      mask_host[0][0][j][i]  = 0.0;
+                    }
+                  }
+                }
+
+                Copy(mask_, mask_host);
+                this->in_.data = this->in_.data * mask_;
+
+            }
+
+
+            Parent::Forward( this->wmat_ );
+        }
+        virtual void Backprop(bool prop_grad) {
+            Parent::Backprop( prop_grad, this->wmat_ );
+            if (prop_grad) {
+                this->in_.data *= mask_;
+            }
+        }
+        virtual void InitLayer( void ){
+            Parent::InitLayer();
+            mask_.Resize( this->in_.data.shape );
+            mask_host.Resize( this->in_.data.shape );
+            L_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            D_.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            D_host.Resize( mshadow::Shape2( this->in_.data.shape[0], this->in_.data.shape[0] ) );
+            p.Resize(mshadow::Shape1(D_.shape[0]));
+
+            this->w_normed.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+            this->w_normalizer.Resize( mshadow::Shape1( this->in_.data.shape[0] ) );
+            this->w_normalizer_repmat.Resize( mshadow::Shape2( this->out_.data.shape[0], this->in_.data.shape[0] ) );
+            p_unnorm.Resize(mshadow::Shape1(D_.shape[0]));
+
+            counter = 0;
+        }
+    private:
+        typedef FullConnectLayer<xpu> Parent;
+    private:
+        mshadow::TensorContainer<xpu, 4> mask_;
+        mshadow::TensorContainer<cpu, 4> mask_host;
+        mshadow::TensorContainer<xpu, 2> L_, D_;
+        mshadow::TensorContainer<cpu, 2> D_host;
+        mshadow::TensorContainer<xpu, 2> w_normed;
+        mshadow::TensorContainer<xpu, 1> w_normalizer;
+        mshadow::TensorContainer<xpu, 2> w_normalizer_repmat;
+        mshadow::TensorContainer<xpu, 1> p, p_unnorm;
+        int counter;
+    }; // class SimBasedDropoutGPULayer
+
 
     template<typename xpu>
     class MyDropoutLayer : public FullConnectLayer<xpu> {
@@ -2078,6 +2296,7 @@ namespace cxxnet{
         if( !strcmp( type, "dpp_dropin") ) return kDppDropin;
         if( !strcmp( type, "strata") ) return kStrata;
         if( !strcmp( type, "simbased_dropout") ) return kSimBasedDropout;
+        if( !strcmp( type, "simbased_dropout_gpu") ) return kSimBasedDropoutGPU;
         if( !strcmp( type, "simbased_dropin") ) return kSimBasedDropin;
         if( !strcmp( type, "my_dropout") ) return kMyDropout;
         if( !strcmp( type, "my_dropout_permbatch") ) return kMyDropoutPerMbatch;
@@ -2117,6 +2336,7 @@ namespace cxxnet{
         case kDppDropin: return new DppDropinLayer<xpu>(rnd, in, out);
         case kStrata: return new StratifiedSamplingLayer<xpu>(rnd, in, out);
         case kSimBasedDropout: return new SimBasedDropoutLayer<xpu>(rnd, in, out);
+        case kSimBasedDropoutGPU: return new SimBasedDropoutGPULayer<xpu>(rnd, in, out);
         case kSimBasedDropin: return new SimBasedDropinLayer<xpu>(rnd, in, out);
         case kMyDropout: return new MyDropoutLayer<xpu>(rnd, in, out);
         case kMyDropoutPerMbatch: return new MyDropoutPerMbatchLayer<xpu>(rnd, in, out);
